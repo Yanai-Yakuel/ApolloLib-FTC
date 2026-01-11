@@ -23,10 +23,10 @@ public class FieldCentricDrive extends OpMode {  // שם המחלקה תואם �
     @Override
     public void init() {
         // הגדרת חומרה - אותם שמות מהקוד שלך
-        backLeft = hardwareMap.get(DcMotor.class, "backLeft");
-        backRight = hardwareMap.get(DcMotor.class, "backRight");
-        frontLeft = hardwareMap.get(DcMotor.class, "frontLeft");
-        frontRight = hardwareMap.get(DcMotor.class, "frontRight");
+        backLeft = hardwareMap.get(DcMotor.class, "backleft");
+        backRight = hardwareMap.get(DcMotor.class, "backright");
+        frontLeft = hardwareMap.get(DcMotor.class, "frontleft");
+        frontRight = hardwareMap.get(DcMotor.class, "frontright");
 
         // הגדרת כיוונים (בדיוק כמו שלך)
         backLeft.setDirection(DcMotorSimple.Direction.REVERSE);
