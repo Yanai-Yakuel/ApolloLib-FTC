@@ -1,0 +1,84 @@
+package org.firstinspires.ftc.teamcode.drive.opmode;
+
+import com.acmerobotics.dashboard.FtcDashboard;
+import com.acmerobotics.dashboard.canvas.Canvas;
+import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
+import com.acmerobotics.roadrunner.geometry.Pose2d;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DcMotor;
+
+import org.firstinspires.ftc.teamcode.drive.SampleMecanumDrive;
+
+@TeleOp(group = "drive")
+public class LocalizationWithTarget extends LinearOpMode {
+
+    // smoothing למיקום הרובוט כדי למנוע קפיצות
+    private Pose2d lastPose = new Pose2d(0, 0, 0);
+    private final double alpha = 0.4;
+
+    @Override
+    public void runOpMode() throws InterruptedException {
+        SampleMecanumDrive drive = new SampleMecanumDrive(hardwareMap);
+        drive.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        FtcDashboard dashboard = FtcDashboard.getInstance();
+
+        // כאן אתה קובע את מיקום העיגול (היעד)
+        Pose2d targetPose = new Pose2d(50, 50, 0);
+
+        waitForStart();
+
+        while (!isStopRequested()) {
+
+            // בקרת רובוט
+            drive.setWeightedDrivePower(
+                    new Pose2d(
+                            -gamepad1.left_stick_y,
+                            -gamepad1.left_stick_x,
+                            -gamepad1.right_stick_x
+                    )
+            );
+
+            drive.update();
+
+            // PoseEstimate חלק
+            Pose2d currentPose = drive.getPoseEstimate();
+            Pose2d smoothPose = new Pose2d(
+                    lastPose.getX() * (1 - alpha) + currentPose.getX() * alpha,
+                    lastPose.getY() * (1 - alpha) + currentPose.getY() * alpha,
+                    lastPose.getHeading() * (1 - alpha) + currentPose.getHeading() * alpha
+            );
+            lastPose = smoothPose;
+
+            telemetry.addData("x", smoothPose.getX());
+            telemetry.addData("y", smoothPose.getY());
+            telemetry.addData("heading (deg)", Math.toDegrees(smoothPose.getHeading()));
+            telemetry.update();
+
+            // יצירת חבילת דאשבורד
+            TelemetryPacket packet = new TelemetryPacket();
+            Canvas fieldOverlay = packet.fieldOverlay();
+
+            // ציור הרובוט (כחול, ריבוע)
+            fieldOverlay.setStroke("#0000FF");
+            fieldOverlay.setStrokeWidth(3);
+            double robotSize = 8;
+            fieldOverlay.strokeRect(
+                    smoothPose.getX() - robotSize / 2,
+                    smoothPose.getY() - robotSize / 2,
+                    robotSize,
+                    robotSize
+            );
+
+            // ציור העיגול של היעד
+            fieldOverlay.setStroke("#FF0000"); // אדום
+            fieldOverlay.setStrokeWidth(3);
+            double radius = 10;
+            fieldOverlay.strokeCircle(targetPose.getX(), targetPose.getY(), radius);
+
+            // שליחת החבילה לדאשבורד
+            dashboard.sendTelemetryPacket(packet);
+        }
+    }
+}
