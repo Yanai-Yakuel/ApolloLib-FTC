@@ -1,0 +1,93 @@
+package org.firstinspires.ftc.teamcode.drive;
+
+import com.acmerobotics.roadrunner.geometry.Pose2d;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+
+@Autonomous(group = "drive")
+public class Autonomous_goal_blue extends LinearOpMode {
+
+    private SampleMecanumDrive drive;
+
+    @Override
+    public void runOpMode() throws InterruptedException
+    {
+
+        drive = new SampleMecanumDrive(hardwareMap);
+
+        // מצב התחלה
+        Pose2d startPose = new Pose2d(-63, -49, Math.toRadians(-90));
+        drive.setPoseEstimate(startPose);
+        double startY = startPose.getY();
+
+        waitForStart();
+        if (isStopRequested()) return;
+
+        // MOVE 1 - 43 אינץ קדימה
+        drive.followTrajectory(
+                drive.trajectoryBuilder(drive.getPoseEstimate())
+                        .back(43)
+                        .build()
+        );
+
+        // 3 שניות "דמוי ירי" - להכניס כאן עוד ירי
+        sleep(2000);
+
+
+          drive.followTrajectory(
+             drive.trajectoryBuilder(drive.getPoseEstimate())
+                       .back(19) //17 nice not  best
+                      .build()
+                       );
+
+        // סיבוב  (לאיסוף)
+      drive.turn(Math.toRadians(45));
+
+      //MOVE 3 - 44 אינץ קדימה (על הכדורים)
+
+      drive.followTrajectory(
+            drive.trajectoryBuilder(drive.getPoseEstimate())
+                    .forward(55)
+                       .build()
+       );
+
+
+        // MOVE 4 - 40 אינץ אחורה
+      drive.followTrajectory(
+             drive.trajectoryBuilder(drive.getPoseEstimate())
+                        .back(40)//40
+                        .build()
+        );
+
+         //סיבוב 90 מעלות לכיוון ירי שני
+        drive.turn(Math.toRadians(-45));
+
+        // MOVE 4 - 40 אינץ אחורה
+
+       drive.followTrajectory(
+             drive.trajectoryBuilder(drive.getPoseEstimate())
+                        .forward(20)//15
+                        .build()
+      );
+        // להכניס כאן עוד ירי כרגע  דימוי לירי
+        sleep(2000);
+
+
+        // שינוי זווית בסיום האוטונומי לכייל פילד אוריאנטד טלאופ .
+        drive.turn(Math.toRadians(-45));
+        drive.update();  // עדכון נוסף לבטחון
+
+
+        double finalY = drive.getPoseEstimate().getY();
+        double finalX = drive.getPoseEstimate().getX();
+        double finalDeg = drive.getRawExternalHeading();
+
+        telemetry.addData("Start Y", "%.1f", startY);
+        telemetry.addData("Final X", "%.1f", finalX);
+        telemetry.addData("Final Y", "%.1f", finalY);
+        telemetry.addData("Final Deg", "%.1f", Math.toDegrees(finalDeg));
+        telemetry.update();
+
+        sleep(3000);
+    }
+}
