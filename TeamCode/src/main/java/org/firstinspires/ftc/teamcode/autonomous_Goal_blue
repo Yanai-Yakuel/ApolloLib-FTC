@@ -1,12 +1,11 @@
 package org.firstinspires.ftc.teamcode.drive;
-
-import org.firstinspires.ftc.robotcore.external.Telemetry;
-import org.firstinspires.ftc.teamcode.drive.opmode.PoseStorage;
-
+import com.acmerobotics.dashboard.FtcDashboard;
+import com.acmerobotics.dashboard.config.Config;
+import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.acmerobotics.roadrunner.geometry.Pose2d;
-import com.acmerobotics.roadrunner.trajectory.Trajectory;
-import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.acmerobotics.roadrunner.util.Angle;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
@@ -14,193 +13,230 @@ import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
-import java.util.Random;
 
-@Autonomous(name = "Autonomous_goal_blue", group = "drive")
-public class Autonomous_goal_blue extends LinearOpMode {
+@Config
+@TeleOp(name = "Competition_2026_2", group = "drive")
+public class comp_drive extends LinearOpMode {
 
+    private DcMotor intakeMotor;
+    private DcMotorEx shoot_u, shoot_d, transfer_motor;
+    private Servo s_block, s_hood;
     private SampleMecanumDrive drive;
-    private DcMotor intakeMotor, transfer_motor;
-    private DcMotorEx shoot_u, shoot_d;
-    private Servo s_transfer, s_block;
 
-    public static double P = 30, I = 2, D = 0, F = 13.5;
-    public static double SHOOT_TARGET_RPM = 1400;
-    private final double SHOOT_TARGET_VEL = (SHOOT_TARGET_RPM * 28.0) / 60.0;
+    //  PID Constants
+    public static double P = 1000, I = 55, D = 0.0, F = 0;
+    public static double SHOOT_IDLE_RPM = 750;
+    public static double SHOOT_TARGET_RPM = 1500; // ה-RPM בזמן ירי /// long = 2000
 
-    private double CLOSE_POS = 0;
-    private double OPEN_POS = 0.06;
-    public static double B_OPEN = 0.572;
-    public static double B_CLOSE = 0.52;
 
+
+    //  PD Holding
+    public static double HOLD_KP = 0.035, HOLD_KD = 0.14, HOLD_KH = 0.45;
+
+    // DRIVE
+    public static double DRIVE_POWER = 0.8;
+    public static double ROTATION_POWER = 0.8;
+
+    // SERVO POSITIONS
+
+    public static double B_OPEN = 0.572, B_CLOSE = 0.52;
+    public static double hood_open = 0.49; /// long = 0.46
+
+
+    // STATE MACHINE FOR SHOOTING
+    enum ShootState { IDLE, OPEN_BLOCK, RUN_TRANSFER }
+    ShootState currentShootState = ShootState.IDLE;
     private ElapsedTime shootTimer = new ElapsedTime();
 
-    // מיקום התחלתי
-    Pose2d startPose = new Pose2d(53.421, 47.47, Math.toRadians(52));
+    public static boolean updatePID = false;
+    private Pose2d targetPose = new Pose2d();
+    private boolean holding = false;
+    private boolean readyToShoot = false;
+    private boolean lastGamepad1B = false;
+
+    private FtcDashboard dashboard;
 
     @Override
     public void runOpMode() throws InterruptedException {
+        // Initialization
         drive = new SampleMecanumDrive(hardwareMap);
+        dashboard = FtcDashboard.getInstance();
 
-        // הגדרת חומרה
         intakeMotor = hardwareMap.get(DcMotor.class, "intake");
         shoot_u = hardwareMap.get(DcMotorEx.class, "shoot_u");
         shoot_d = hardwareMap.get(DcMotorEx.class, "shoot_d");
-        transfer_motor = hardwareMap.get(DcMotorEx.class, "transfer_motor");
-        s_transfer = hardwareMap.get(Servo.class, "s_transfer");
         s_block = hardwareMap.get(Servo.class, "s_block");
+        transfer_motor = hardwareMap.get(DcMotorEx.class, "transfer_motor");
+        s_hood = hardwareMap.get(Servo.class, "s_hood");
 
-        shoot_d.setDirection(DcMotorSimple.Direction.REVERSE);
-        s_transfer.setDirection(Servo.Direction.REVERSE);
+        shoot_u.setDirection(DcMotorSimple.Direction.REVERSE);
+        shoot_d.setDirection(DcMotorSimple.Direction.FORWARD);
 
         shoot_u.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         shoot_d.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
-        PIDFCoefficients pidf = new PIDFCoefficients(P, I, D, F);
-        shoot_u.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidf);
-        shoot_d.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, pidf);
+        updatePIDCoefficients();
 
-        drive.setPoseEstimate(startPose);
-
-        // בחירת חבר צוות רנדומלי (הקוד המקורי שלך)
-        Random random = new Random();
-        String[] teamMembers = {"yanai", "amit", "nir", "yuri", "shvadi", "uri", "ya'ari", "tamir", "yogev", "neta", "benya", "peleg"};
-        String selectedMember = teamMembers[random.nextInt(teamMembers.length)];
-
-        // לולאת Init - מציגה מיקום נוכחי וחבר צוות
         while (!isStarted() && !isStopRequested()) {
-            telemetry.addLine("=== SYSTEM READY ===");
-            telemetry.addData("Selected Member", selectedMember);
-            updateTelemetryPose();
+            displayPose();
+            telemetry.update();
         }
 
         waitForStart();
-        if (isStopRequested()) return;
 
-        // התחלת האוטונומוס
-        s_block.setPosition(B_CLOSE);
-        s_transfer.setPosition(CLOSE_POS);
-
-        shoot_u.setVelocity(SHOOT_TARGET_VEL);
-        shoot_d.setVelocity(SHOOT_TARGET_VEL);
-
-        // המתנה לטעינת יורה
-        shootTimer.reset();
-        while (shootTimer.milliseconds() < 1000 && opModeIsActive()) {
+        while (opModeIsActive() && !isStopRequested()) {
             drive.update();
-            updateTelemetryPose();
+            Pose2d pose = drive.getPoseEstimate();
+            Pose2d poseVelocity = drive.getPoseVelocity();
+            if (poseVelocity == null) poseVelocity = new Pose2d();
+
+            s_hood.setPosition(hood_open);
+
+            if (gamepad1.back) drive.setPoseEstimate(new Pose2d(pose.getX(), pose.getY(), 0));
+            if (gamepad1.start) drive.setPoseEstimate(new Pose2d(0, 0, Math.toRadians(90)));
+
+
+            if (currentShootState == ShootState.IDLE) {
+                if (gamepad1.left_trigger > 0.1) {
+                    intakeMotor.setPower(0.8);
+                    transfer_motor.setPower(-0.3);
+                } else if (gamepad1.right_trigger > 0.1) {
+                    intakeMotor.setPower(-0.8);
+                    transfer_motor.setPower(0.8);
+                } else {
+                    intakeMotor.setPower(0);
+                    transfer_motor.setPower(0);
+                }
+            }
+            if (gamepad1.b && !lastGamepad1B) readyToShoot = !readyToShoot;
+            lastGamepad1B = gamepad1.b;
+
+            double activeVel = (SHOOT_TARGET_RPM * 28.0) / 60.0;
+            double idleVel = (SHOOT_IDLE_RPM * 28.0) / 60.0;
+
+            double currentTargetVel = readyToShoot ? activeVel : idleVel;
+
+            shoot_u.setVelocity(currentTargetVel);
+            shoot_d.setVelocity(currentTargetVel);
+
+            double velU = shoot_u.getVelocity();
+            double velD = shoot_d.getVelocity();
+
+            boolean shooterReady = readyToShoot &&
+                    (Math.abs(activeVel - velU) < 50) &&
+                    (Math.abs(activeVel - velD) < 50);
+
+            switch (currentShootState) {
+                case IDLE:
+                    s_block.setPosition(B_CLOSE);
+                    if (gamepad1.dpad_up && shooterReady) {
+                        shootTimer.reset();
+                        s_block.setPosition(B_OPEN);
+                        currentShootState = ShootState.OPEN_BLOCK;
+                    }
+                    break;
+                case OPEN_BLOCK:
+                    if (shootTimer.milliseconds() > 300) {
+                        transfer_motor.setPower(0.8);
+                        intakeMotor.setPower(-0.8);
+                        shootTimer.reset();
+                        currentShootState = ShootState.RUN_TRANSFER;
+                    }
+                    break;
+                case RUN_TRANSFER:
+                    if (shootTimer.milliseconds() > 1000) {
+                        intakeMotor.setPower(0);
+                        transfer_motor.setPower(0);
+                        s_block.setPosition(B_CLOSE);
+                        currentShootState = ShootState.IDLE;
+                    }
+                    break;
+            }
+            //  DRIVE & HOLDING LOGIC
+            if (gamepad1.a) {
+                targetPose = new Pose2d(23.4, 22, Math.toRadians(45));
+                holding = true;
+            } else if (gamepad1.x) {
+                targetPose = new Pose2d(47.1, 10.7, Math.toRadians(75));
+                holding = true;
+            } else if (gamepad1.y || Math.abs(gamepad1.left_stick_y) > 0.1 ||
+                    Math.abs(gamepad1.left_stick_x) > 0.1 ||
+                    Math.abs(gamepad1.right_stick_x) > 0.1) {
+                // Bi-directional exit: button Y OR stick movement
+                holding = false;
+            }
+            if (holding) {
+                executePD(pose, poseVelocity);
+            } else {
+                double ly = -gamepad1.left_stick_y * DRIVE_POWER;
+                double lx = gamepad1.left_stick_x * DRIVE_POWER;
+                double rx = -gamepad1.right_stick_x * ROTATION_POWER;
+
+                double botHeading = pose.getHeading();
+                double rotX = lx * Math.cos(-botHeading) - ly * Math.sin(-botHeading);
+                double rotY = lx * Math.sin(-botHeading) + ly * Math.cos(-botHeading);
+
+                drive.setWeightedDrivePower(new Pose2d(rotX, rotY, rx));
+            }
+
+            //  PID UPDATE (From Dashboard)
+            if (updatePID) {
+                updatePIDCoefficients();
+                updatePID = false;
+            }
+            sendTelemetry(velU, velD, currentTargetVel, shooterReady);
+            //  TELEMETRY & DASHBOARD
         }
-
-        // --- תנועה וירי 1 ---
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(31.504, 19.1, Math.toRadians(52)))
-                .build());
-        shoot();
-
-        // --- איסוף 1 ---
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(3, 18, Math.toRadians(90)))
-                .build());
-
-        intakeMotor.setPower(-0.8);
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(4, 60, Math.toRadians(90)))
-                .build());
-        intakeMotor.setPower(0);
-
-        // --- ירי 2 ---
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(38, 13, Math.toRadians(52)))
-                .build());
-        shoot();
-
-        // --- איסוף 2 ---
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(-25, 15, Math.toRadians(90)))
-                .build());
-
-        intakeMotor.setPower(-0.8);
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(-20, 67, Math.toRadians(90)))
-                .build());
-
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(-16, 50, Math.toRadians(90)))
-                .build());
-
-        // --- ירי 3 ---
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(42, 5, Math.toRadians(52)))
-                .build());
-        shoot();
-
-        // --- איסוף 3 ---
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(-60, 15, Math.toRadians(90)))
-                .build());
-
-        intakeMotor.setPower(-0.8);
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(-40, 70, Math.toRadians(90)))
-                .build());
-
-        // --- ירי 4 ---
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(48, 0, Math.toRadians(52)))
-                .build());
-        shoot();
-
-        // חנייה
-        drive.followTrajectory(drive.trajectoryBuilder(drive.getPoseEstimate())
-                .lineToLinearHeading(new Pose2d(40, 8, Math.toRadians(-90)))
-                .build());
-
-        // כיבוי מערכות
-        shoot_u.setVelocity(0);
-        shoot_d.setVelocity(0);
-        s_transfer.setPosition(CLOSE_POS);
-
-        PoseStorage.currentPose = drive.getPoseEstimate();
-        telemetry.addLine("Autonomous Complete");
-        updateTelemetryPose();
     }
 
-    private void shoot() {
-        shootTimer.reset();
-        s_block.setPosition(B_OPEN);
-        while (shootTimer.milliseconds() < 300 && opModeIsActive()) {
-            drive.update();
-            updateTelemetryPose();
-        }
 
-        transfer_motor.setPower(-1.0);
-        intakeMotor.setPower(-1);
 
-        shootTimer.reset();
-        while (shootTimer.milliseconds() < 1000 && opModeIsActive()) {
-            drive.update();
-            updateTelemetryPose();
-        }
-
-        s_transfer.setPosition(OPEN_POS);
-        shootTimer.reset();
-        while (shootTimer.milliseconds() < 300 && opModeIsActive()) {
-            drive.update();
-            updateTelemetryPose();
-        }
-
-        s_transfer.setPosition(CLOSE_POS);
-        intakeMotor.setPower(0);
-        transfer_motor.setPower(0);
-        s_block.setPosition(B_CLOSE);
+    private void updatePIDCoefficients() {
+        PIDFCoefficients coeff = new PIDFCoefficients(P, I, D, F);
+        shoot_u.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, coeff);
+        shoot_d.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER, coeff);
     }
 
-    // פונקציה לעדכון מיקום בטלמטריה
-    private void updateTelemetryPose() {
-        Pose2d currentPose = drive.getPoseEstimate();
-        telemetry.addData("Robot X", "%.2f", currentPose.getX());
-        telemetry.addData("Robot Y", "%.2f", currentPose.getY());
-        telemetry.addData("Heading", "%.2f°", Math.toDegrees(currentPose.getHeading()));
+    private void executePD(Pose2d pose, Pose2d poseVelocity) {
+        double xError = targetPose.getX() - pose.getX();
+        double yError = targetPose.getY() - pose.getY();
+        double hError = Angle.normDelta(targetPose.getHeading() - pose.getHeading());
+
+        double xCmd = (xError * HOLD_KP) - (poseVelocity.getX() * HOLD_KD);
+        double yCmd = (yError * HOLD_KP) - (poseVelocity.getY() * HOLD_KD);
+        double hCmd = (hError * HOLD_KH);
+
+        double rotX = xCmd * Math.cos(-pose.getHeading()) - yCmd * Math.sin(-pose.getHeading());
+        double rotY = xCmd * Math.sin(-pose.getHeading()) + yCmd * Math.cos(-pose.getHeading());
+        drive.setWeightedDrivePower(new Pose2d(rotX, rotY, hCmd));
+    }
+
+    private void sendTelemetry(double velU, double velD, double targetVel, boolean shooterReady) {
+        TelemetryPacket packet = new TelemetryPacket();
+        double ticksPerRev = 28.0;
+        double velU_RPM = (velU / ticksPerRev) * 60.0;
+        double velD_RPM = (velD / ticksPerRev) * 60.0;
+
+
+
+        packet.put("targetRPM", SHOOT_TARGET_RPM);
+        packet.put("velU_RPM", velU_RPM);
+        packet.put("velD_RPM", velD_RPM);
+        packet.put("shooterReady", shooterReady);
+        dashboard.sendTelemetryPacket(packet);
+
+        telemetry.addData("Status", holding ? "HOLDING TARGET" : "MANUAL DRIVE");
+        telemetry.addData("Shoot Sequence", currentShootState);
+        telemetry.addData("Ready2Shoot", shooterReady ? "YES" : "NO");
+        displayPose();
         telemetry.update();
+    }
+
+
+    private void displayPose() {
+        Pose2d currentPose = drive.getPoseEstimate();
+        telemetry.addData("Pose X", "%.2f", currentPose.getX());
+        telemetry.addData("Pose Y", "%.2f", currentPose.getY());
+        telemetry.addData("Pose Heading", "%.2f°", Math.toDegrees(currentPose.getHeading()));
     }
 }
