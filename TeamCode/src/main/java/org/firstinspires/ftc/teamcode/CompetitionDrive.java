@@ -15,7 +15,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.teamcode.drive.opmode.PoseStorage;
 
 @Config
-@TeleOp(name = "Competition_2026_Final", group = "drive")
+@TeleOp(name = "Competition_2026_Final_Fixed", group = "drive")
 public class CompetitionDrive extends LinearOpMode {
 
     private DcMotor intakeMotor;
@@ -23,31 +23,34 @@ public class CompetitionDrive extends LinearOpMode {
     private Servo s_block, s_hood;
     private SampleMecanumDrive drive;
 
-    // PID Constants - מותאמים למהירות נמוכה
+    // PID Shooter
     public static double P = 100, I = 1.2, D = 3, F = 0;
     public static double SHOOT_TARGET_RPM = 2250;
 
-    // RPM Constants
-    public static final double TICKS_PER_REV = 28.0;  // 5202 series encoder
-    public static final double RPM_TOLERANCE = 75.0;  // טולרנס ב-RPM
+    public static final double TICKS_PER_REV = 28.0;
+    public static final double RPM_TOLERANCE = 75.0;
 
-    // PD Holding
-    public static double HOLD_KP = 0.035, HOLD_KD = 0.14, HOLD_KH = 0.45;
+    // --- HOLDING CONSTANTS ---
+    public static double HOLD_KP = 0.04;
+    public static double HOLD_KI = 0.006;
+    public static double HOLD_KD = 0.15;
+    public static double HOLD_KH = 0.5;
+    public static double HOLD_MIN_PUSH = 0.07; // הכוח המינימלי למניעת עצירה ב-3 אינץ'
+
+    private double xIntegral = 0, yIntegral = 0;
 
     // DRIVE
     public static double DRIVE_POWER = 0.8;
     public static double ROTATION_POWER = 0.8;
 
-    // SERVO POSITIONS
-    public static double B_OPEN = 0.556, B_CLOSE = 0.51;
+    // SERVO
+    public static double B_OPEN = 0.556, B_CLOSE = 0.501;
     public static double hood_open = 0.47;
 
-    // STATE MACHINE FOR SHOOTING
     enum ShootState { IDLE, OPEN_BLOCK, RUN_TRANSFER }
     ShootState currentShootState = ShootState.IDLE;
     private ElapsedTime shootTimer = new ElapsedTime();
 
-    public static boolean updatePID = false;
     private Pose2d targetPose = new Pose2d();
     private boolean holding = false;
     private boolean readyToShoot = false;
@@ -55,17 +58,16 @@ public class CompetitionDrive extends LinearOpMode {
 
     private FtcDashboard dashboard;
 
-    // פונקציית המרה ל-RPM
-    private double velocityToRPM(double velocity) {
-        return (Math.abs(velocity) * 60.0) / TICKS_PER_REV;
-    }
-
     @Override
     public void runOpMode() throws InterruptedException {
+        // Initialization
         drive = new SampleMecanumDrive(hardwareMap);
         dashboard = FtcDashboard.getInstance();
-        drive.setPoseEstimate(PoseStorage.currentPose);
-
+        drive.setPoseEstimate(new Pose2d(
+                PoseStorage.currentPose.getX(),
+                PoseStorage.currentPose.getY(),
+                0.0
+        ));
         intakeMotor = hardwareMap.get(DcMotor.class, "intake");
         shoot_u = hardwareMap.get(DcMotorEx.class, "shoot_u");
         shoot_d = hardwareMap.get(DcMotorEx.class, "shoot_d");
@@ -75,7 +77,6 @@ public class CompetitionDrive extends LinearOpMode {
 
         shoot_u.setDirection(DcMotorSimple.Direction.FORWARD);
         shoot_d.setDirection(DcMotorSimple.Direction.FORWARD);
-
         shoot_u.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         shoot_d.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
@@ -98,86 +99,27 @@ public class CompetitionDrive extends LinearOpMode {
 
             // HEADING RESET
             if (gamepad1.back) drive.setPoseEstimate(new Pose2d(pose.getX(), pose.getY(), 0));
-            if (gamepad1.start) drive.setPoseEstimate(new Pose2d(0, 0, Math.toRadians(90)));
 
             // INTAKE & TRANSFER
-            if (currentShootState == ShootState.IDLE) {
-                if (gamepad1.left_trigger > 0.1) {
-                    intakeMotor.setPower(0.8);
-                    transfer_motor.setPower(-0.3);
-                } else if (gamepad1.right_trigger > 0.1) {
-                    intakeMotor.setPower(-0.8);
-                    transfer_motor.setPower(0.8);
-                } else {
-                    intakeMotor.setPower(0);
-                    transfer_motor.setPower(0);
-                }
-            }
+            handleIntake();
 
-            if (gamepad1.b && !lastGamepad1B) {
-                readyToShoot = !readyToShoot;
-                if (readyToShoot) {
-                    updatePIDCoefficients();
-                }
-            }
-            lastGamepad1B = gamepad1.b;
+            // SHOOTER
+            handleShooter(pose);
 
-            double targetVel = (SHOOT_TARGET_RPM * TICKS_PER_REV) / 60.0;
 
-            if (readyToShoot) {
-                shoot_u.setVelocity(-targetVel);
-                shoot_d.setVelocity(targetVel);
-            } else {
-                shoot_u.setVelocity(0);
-                shoot_d.setVelocity(0);
-            }
+            // --- DRIVE & HOLDING SELECTION ---
 
-            double velU = shoot_u.getVelocity();
-            double velD = shoot_d.getVelocity();
-
-            double rpmU = velocityToRPM(velU);
-            double rpmD = velocityToRPM(velD);
-
-            boolean shooterReady = readyToShoot &&
-                    (Math.abs(SHOOT_TARGET_RPM - rpmU) < RPM_TOLERANCE) &&
-                    (Math.abs(SHOOT_TARGET_RPM - rpmD) < RPM_TOLERANCE);
-
-            // SHOOTING STATE MACHINE
-            switch (currentShootState) {
-                case IDLE:
-                    s_block.setPosition(B_CLOSE);
-                    if (gamepad1.dpad_up && shooterReady) {
-                        shootTimer.reset();
-                        s_block.setPosition(B_OPEN);
-                        currentShootState = ShootState.OPEN_BLOCK;
-                    }
-                    break;
-
-                case OPEN_BLOCK:
-                    if (shootTimer.milliseconds() > 300) {
-                        transfer_motor.setPower(0.75);
-                        intakeMotor.setPower(-0.8);
-                        shootTimer.reset();
-                        currentShootState = ShootState.RUN_TRANSFER;
-                    }
-                    break;
-
-                case RUN_TRANSFER:
-                    if (shootTimer.milliseconds() > 1000) {
-                        intakeMotor.setPower(0);
-                        transfer_motor.setPower(0);
-                        s_block.setPosition(B_CLOSE);
-                        currentShootState = ShootState.IDLE;
-                    }
-                    break;
-            }
-
-            // DRIVE & HOLDING LOGIC
-            if (gamepad1.a) {
-                targetPose = new Pose2d(23.4, 22, Math.toRadians(45));
+            if (gamepad1.a) {  /// SHOOT 1
+                targetPose = new Pose2d(19.373, 18.69, Math.toRadians(315));
+                if (!holding) resetIntegrals();
+                 holding = true;
+            } else if (gamepad1.y) { /// shoot 2
+                targetPose = new Pose2d(50.88, 6.13, Math.toRadians(279));
+                if (!holding) resetIntegrals();
                 holding = true;
-            } else if (gamepad1.x) {
-                targetPose = new Pose2d(47.1, 10.7, Math.toRadians(75));
+            } else if (gamepad1.x) { /// GATE
+                targetPose = new Pose2d(50.88, 6.13, Math.toRadians(81.405));
+                if (!holding) resetIntegrals();
                 holding = true;
             } else if (gamepad1.y || Math.abs(gamepad1.left_stick_y) > 0.1 ||
                     Math.abs(gamepad1.left_stick_x) > 0.1 ||
@@ -188,31 +130,15 @@ public class CompetitionDrive extends LinearOpMode {
             if (holding) {
                 executePD(pose, poseVelocity);
             } else {
-                double ly = -gamepad1.left_stick_y * DRIVE_POWER;
-                double lx = gamepad1.left_stick_x * DRIVE_POWER;
-                double rx = -gamepad1.right_stick_x * ROTATION_POWER;
-
-                double botHeading = pose.getHeading();
-                double rotX = lx * Math.cos(-botHeading) - ly * Math.sin(-botHeading);
-                double rotY = lx * Math.sin(-botHeading) + ly * Math.cos(-botHeading);
-
-                drive.setWeightedDrivePower(new Pose2d(rotX, rotY, rx));
+                driveManual(pose);
             }
-
-            if (updatePID) {
-                updatePIDCoefficients();
-                updatePID = false;
-            }
-
-            sendTelemetry(velU, velD, rpmU, rpmD, shooterReady);
+            sendTelemetry(pose);
         }
     }
-
-    private void updatePIDCoefficients() {
-        shoot_u.setVelocityPIDFCoefficients(P, I, D, F);
-        shoot_d.setVelocityPIDFCoefficients(P, I, D, F);
-        shoot_u.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        shoot_d.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+    // --- HELPER METHODS ---
+    private void resetIntegrals() {
+        xIntegral = 0;
+        yIntegral = 0;
     }
 
     private void executePD(Pose2d pose, Pose2d poseVelocity) {
@@ -220,39 +146,120 @@ public class CompetitionDrive extends LinearOpMode {
         double yError = targetPose.getY() - pose.getY();
         double hError = Angle.normDelta(targetPose.getHeading() - pose.getHeading());
 
-        double xCmd = (xError * HOLD_KP) - (poseVelocity.getX() * HOLD_KD);
-        double yCmd = (yError * HOLD_KP) - (poseVelocity.getY() * HOLD_KD);
+        if (Math.abs(xError) < 4) xIntegral = Math.max(-15, Math.min(15, xIntegral + xError));
+        else xIntegral = 0;
+
+        if (Math.abs(yError) < 4) yIntegral = Math.max(-15, Math.min(15, yIntegral + yError));
+        else yIntegral = 0;
+
+        double xCmd = (xError * HOLD_KP) + (xIntegral * HOLD_KI) - (poseVelocity.getX() * HOLD_KD);
+        double yCmd = (yError * HOLD_KP) + (yIntegral * HOLD_KI) - (poseVelocity.getY() * HOLD_KD);
         double hCmd = (hError * HOLD_KH);
+
+        if (Math.abs(xError) > 0.4) xCmd += Math.signum(xError) * HOLD_MIN_PUSH;
+        if (Math.abs(yError) > 0.4) yCmd += Math.signum(yError) * HOLD_MIN_PUSH;
 
         double rotX = xCmd * Math.cos(-pose.getHeading()) - yCmd * Math.sin(-pose.getHeading());
         double rotY = xCmd * Math.sin(-pose.getHeading()) + yCmd * Math.cos(-pose.getHeading());
+
         drive.setWeightedDrivePower(new Pose2d(rotX, rotY, hCmd));
     }
 
-    private void sendTelemetry(double velU, double velD, double rpmU, double rpmD, boolean shooterReady) {
-        TelemetryPacket packet = new TelemetryPacket();
+    private void driveManual(Pose2d pose) {
+        double inputX = -gamepad1.left_stick_y * DRIVE_POWER;
+        double inputY = -gamepad1.left_stick_x * DRIVE_POWER;
+        double rx = -gamepad1.right_stick_x * ROTATION_POWER;
 
-        packet.put("targetRPM", SHOOT_TARGET_RPM);
-        packet.put("rpmU", rpmU);
-        packet.put("rpmD", rpmD);
-        packet.put("shooterReady", shooterReady);
-        dashboard.sendTelemetryPacket(packet);
+        double botHeading = pose.getHeading();
 
-        // טלמטרי נוסף לבדיקה
-        telemetry.addData("U RPM", "%.0f", rpmU);
-        telemetry.addData("D RPM", "%.0f", rpmD);
-        telemetry.addData("Target RPM", SHOOT_TARGET_RPM);
-        telemetry.addData("Status", holding ? "HOLDING TARGET" : "MANUAL DRIVE");
-        telemetry.addData("Shoot Sequence", currentShootState);
-        telemetry.addData("Ready2Shoot", shooterReady ? "YES" : "NO");
+        double rotX = inputX * Math.cos(-botHeading) - inputY * Math.sin(-botHeading);
+        double rotY = inputX * Math.sin(-botHeading) + inputY * Math.cos(-botHeading);
+
+        drive.setWeightedDrivePower(new Pose2d(rotX, rotY, rx));
+    }
+    // איסוף
+    private void handleIntake() {
+        if (currentShootState == ShootState.IDLE) {
+            if (gamepad1.left_trigger > 0.1) {
+                intakeMotor.setPower(0.8);
+                transfer_motor.setPower(-0.3);
+            } else if (gamepad1.right_trigger > 0.1) {
+                intakeMotor.setPower(-0.8);
+                transfer_motor.setPower(0.8);
+            } else {
+                intakeMotor.setPower(0);
+                transfer_motor.setPower(0);
+            }
+        }
+    }
+
+    private void handleShooter(Pose2d pose) {
+        if (gamepad1.b
+                && !lastGamepad1B) {
+            readyToShoot = !readyToShoot;
+            if (readyToShoot) updatePIDCoefficients();
+        }
+        lastGamepad1B = gamepad1.b;
+
+        double targetVel = (SHOOT_TARGET_RPM * TICKS_PER_REV) / 60.0;
+        if (readyToShoot) {
+            shoot_u.setVelocity(-targetVel);
+            shoot_d.setVelocity(targetVel);
+        } else {
+            shoot_u.setVelocity(0);
+            shoot_d.setVelocity(0);
+        }
+
+        double rpmU = (Math.abs(shoot_u.getVelocity()) * 60.0) / TICKS_PER_REV;
+        double rpmD = (Math.abs(shoot_d.getVelocity()) * 60.0) / TICKS_PER_REV;
+        boolean shooterReady = readyToShoot &&
+                (Math.abs(SHOOT_TARGET_RPM - rpmU) < RPM_TOLERANCE) &&
+                (Math.abs(SHOOT_TARGET_RPM - rpmD) < RPM_TOLERANCE);
+
+        switch (currentShootState) {
+            case IDLE:
+                s_block.setPosition(B_CLOSE);
+                if (gamepad1.dpad_up && shooterReady) {
+                    shootTimer.reset();
+                    s_block.setPosition(B_OPEN);
+                    currentShootState = ShootState.OPEN_BLOCK;
+                }
+                break;
+            case OPEN_BLOCK:
+                if (shootTimer.milliseconds() > 300) {
+                    transfer_motor.setPower(0.8);
+                    intakeMotor.setPower(-0.8);
+                    shootTimer.reset();
+                    currentShootState = ShootState.RUN_TRANSFER;
+                }
+                break;
+            case RUN_TRANSFER:
+                if (shootTimer.milliseconds() > 1000) {
+                    intakeMotor.setPower(0);
+                    transfer_motor.setPower(0);
+                    s_block.setPosition(B_CLOSE);
+                    currentShootState = ShootState.IDLE;
+                }
+                break;
+        }
+    }
+
+    private void updatePIDCoefficients() {
+        shoot_u.setVelocityPIDFCoefficients(P, I, D, F);
+        shoot_d.setVelocityPIDFCoefficients(P, I, D, F);
+    }
+
+    private void sendTelemetry(Pose2d pose) {
+        telemetry.addData("Status", holding ? "HOLDING" : "MANUAL");
+        telemetry.addData("X Error", targetPose.getX() - pose.getX());
+        telemetry.addData("Y Error", targetPose.getY() - pose.getY());
         displayPose();
         telemetry.update();
     }
-
     private void displayPose() {
         Pose2d currentPose = drive.getPoseEstimate();
         telemetry.addData("Pose X", "%.2f", currentPose.getX());
         telemetry.addData("Pose Y", "%.2f", currentPose.getY());
-        telemetry.addData("Pose Heading", "%.2f°", Math.toDegrees(currentPose.getHeading()));
+        telemetry.addData("Heading", "%.2f°", Math.toDegrees(currentPose.getHeading()));
     }
 }
