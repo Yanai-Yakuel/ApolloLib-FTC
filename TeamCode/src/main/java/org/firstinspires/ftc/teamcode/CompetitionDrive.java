@@ -28,8 +28,10 @@ public class CompetitionDrive extends LinearOpMode {
     public static double P = 100, I = 1.2, D = 3, F = 0;
     public static double SHOOT_TARGET_RPM = 2250;
 
+    private double manualAngleOffset = 0;
+
     public static final double TICKS_PER_REV = 28.0;
-    public static final double RPM_TOLERANCE = 75.0;
+    public static final double RPM_TOLERANCE = 150;
 
     // --- HOLDING CONSTANTS ---
     public static double HOLD_KP = 0.04;
@@ -65,11 +67,8 @@ public class CompetitionDrive extends LinearOpMode {
         // Initialization
         drive = new SampleMecanumDrive(hardwareMap);
         dashboard = FtcDashboard.getInstance();
-        drive.setPoseEstimate(new Pose2d(
-                PoseStorage.currentPose.getX(),
-                PoseStorage.currentPose.getY(),
-                0.0
-        ));
+        drive.setPoseEstimate(PoseStorage.currentPose);
+
         intakeMotor = hardwareMap.get(DcMotor.class, "intake");
         shoot_u = hardwareMap.get(DcMotorEx.class, "shoot_u");
         shoot_d = hardwareMap.get(DcMotorEx.class, "shoot_d");
@@ -91,6 +90,8 @@ public class CompetitionDrive extends LinearOpMode {
 
         waitForStart();
 
+        manualAngleOffset = drive.getPoseEstimate().getHeading() + Math.toRadians(90);
+
         while (opModeIsActive() && !isStopRequested()) {
             drive.update();
             Pose2d pose = drive.getPoseEstimate();
@@ -107,15 +108,15 @@ public class CompetitionDrive extends LinearOpMode {
             // SHOOTER
             handleShooter(pose);
 
-            if (gamepad1.a) {
-                targetPose = new Pose2d(19.373, 18.69, Math.toRadians(315));
+            if (gamepad1.a) { /// ירי ראשי
+                targetPose = new Pose2d(26.7, 24.0175, Math.toRadians(45));
                 if (!holding) resetIntegrals();
                 holding = true;
-            } else if (gamepad1.y) {
-                targetPose = new Pose2d(50.88, 6.13, Math.toRadians(279));
+            } else if (gamepad1.y) { /// גייט
+                targetPose = new Pose2d(0.9319, 55.23, Math.toRadians(90));
                 if (!holding) resetIntegrals();
                 holding = true;
-            } else if (gamepad1.x) {
+            } else if (gamepad1.x) { /// ירי שלישי
                 targetPose = new Pose2d(50.88, 6.13, Math.toRadians(81.405));
                 if (!holding) resetIntegrals();
                 holding = true;
@@ -166,19 +167,17 @@ public class CompetitionDrive extends LinearOpMode {
     }
 
     private void driveManual(Pose2d pose) {
-        double inputX = -gamepad1.left_stick_y * DRIVE_POWER;
-        double inputY = -gamepad1.left_stick_x * DRIVE_POWER;
+        double inputY = gamepad1.left_stick_y * DRIVE_POWER;
+        double inputX = -gamepad1.left_stick_x * DRIVE_POWER;
         double rx = -gamepad1.right_stick_x * ROTATION_POWER;
 
-        double botHeading = pose.getHeading();
+        double botHeading = pose.getHeading() - manualAngleOffset;
 
         double rotX = inputX * Math.cos(-botHeading) - inputY * Math.sin(-botHeading);
         double rotY = inputX * Math.sin(-botHeading) + inputY * Math.cos(-botHeading);
 
         drive.setWeightedDrivePower(new Pose2d(rotX, rotY, rx));
     }
-
-
     private void handleIntake() {
         if (gamepad1.left_trigger > 0.1) {
             currentShootState = ShootState.IDLE;
