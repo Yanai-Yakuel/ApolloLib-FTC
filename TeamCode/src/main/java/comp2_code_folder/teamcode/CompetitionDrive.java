@@ -31,7 +31,7 @@ public class CompetitionDrive extends LinearOpMode {
     private double manualAngleOffset = 0;
 
     public static final double TICKS_PER_REV = 28.0;
-    public static final double RPM_TOLERANCE = 150;
+    public static final double RPM_TOLERANCE = 189;
 
     // --- HOLDING CONSTANTS ---
     public static double HOLD_KP = 0.04;
@@ -47,7 +47,7 @@ public class CompetitionDrive extends LinearOpMode {
     public static double ROTATION_POWER = 0.8;
 
     // SERVO
-    public static double B_OPEN = 0.556, B_CLOSE = 0.501;
+    public static double B_OPEN = 0.556, B_CLOSE = 0.501; //0.501
     public static double hood_open = 0.47;
 
     enum ShootState { IDLE, OPEN_BLOCK, RUN_TRANSFER }
@@ -92,7 +92,8 @@ public class CompetitionDrive extends LinearOpMode {
 
         manualAngleOffset = drive.getPoseEstimate().getHeading() + Math.toRadians(90);
 
-        while (opModeIsActive() && !isStopRequested()) {
+        while (opModeIsActive() && !isStopRequested())
+        {
             drive.update();
             Pose2d pose = drive.getPoseEstimate();
             Pose2d poseVelocity = drive.getPoseVelocity();
@@ -108,33 +109,32 @@ public class CompetitionDrive extends LinearOpMode {
             // SHOOTER
             handleShooter(pose);
 
-            if (gamepad1.a) { /// ירי ראשי
-                targetPose = new Pose2d(26.7, 24.0175, Math.toRadians(45));
-                if (!holding) resetIntegrals();
-                holding = true;
-            } else if (gamepad1.y) { /// גייט
-                targetPose = new Pose2d(0.9319, 55.23, Math.toRadians(90));
-                if (!holding) resetIntegrals();
-                holding = true;
-            } else if (gamepad1.x) { /// ירי שלישי
-                targetPose = new Pose2d(50.88, 6.13, Math.toRadians(81.405));
-                if (!holding) resetIntegrals();
-                holding = true;
-            } else if (gamepad1.y || Math.abs(gamepad1.left_stick_y) > 0.1 ||
+            if (gamepad1.a)
+            {
+                if (!holding)
+                {
+                    targetPose = pose;
+                    resetIntegrals();
+                    holding = true;
+                }
+            }
+            else if (Math.abs(gamepad1.left_stick_y) > 0.1 ||
                     Math.abs(gamepad1.left_stick_x) > 0.1 ||
-                    Math.abs(gamepad1.right_stick_x) > 0.1) {
+                    Math.abs(gamepad1.right_stick_x) > 0.1)
+            {
                 holding = false;
             }
 
-            if (holding) {
+            if (holding)
+            {
                 executePD(pose, poseVelocity);
-            } else {
+            } else
+            {
                 driveManual(pose);
             }
             sendTelemetry(pose);
         }
     }
-
 
     private void resetIntegrals() {
         xIntegral = 0;
