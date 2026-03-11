@@ -18,7 +18,7 @@ import org.firstinspires.ftc.teamcode.drive.opmode.PoseStorage;
 import org.firstinspires.ftc.teamcode.drive.opmode.SampleMecanumDrive;
 
 @Config
-@TeleOp(name = "Competition_2026", group = "drive")
+@TeleOp(name = "Competition_2026_limelight", group = "drive")
 public class CompetitionDrive extends LinearOpMode {
 
     // Hardware
