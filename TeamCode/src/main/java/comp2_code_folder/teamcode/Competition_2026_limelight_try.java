@@ -17,6 +17,8 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.teamcode.drive.opmode.PoseStorage;
 import org.firstinspires.ftc.teamcode.drive.opmode.SampleMecanumDrive;
 
+
+
 @Config
 @TeleOp(name = "Competition_2026_limelight", group = "drive")
 public class CompetitionDrive extends LinearOpMode {
@@ -32,7 +34,7 @@ public class CompetitionDrive extends LinearOpMode {
     public static Pose2d TARGET_POSE_RED = new Pose2d(-26.7, 24.0175, Math.toRadians(135));
     public static final double M_TO_IN = 39.37;
 
-    // Align PID
+    //  PID drive
     public static double HOLD_KP = 0.045;
     public static double HOLD_KI = 0.003;
     public static double HOLD_KD = 0.18;
@@ -41,6 +43,11 @@ public class CompetitionDrive extends LinearOpMode {
 
     private double xIntegral = 0;
     private double yIntegral = 0;
+
+
+    // PID SHOOTER
+
+    public static double P = 100, I = 1.2, D = 3, F = 0;
 
     public static double DRIVE_POWER = 0.8;
     public static double ROTATION_POWER = 0.8;
@@ -79,9 +86,9 @@ public class CompetitionDrive extends LinearOpMode {
         shoot_u = hardwareMap.get(DcMotorEx.class, "shoot_u");
         shoot_d = hardwareMap.get(DcMotorEx.class, "shoot_d");
         transfer_motor = hardwareMap.get(DcMotorEx.class, "transfer_motor");
-
         s_block = hardwareMap.get(Servo.class, "s_block");
         s_hood = hardwareMap.get(Servo.class, "s_hood");
+
 
         shoot_u.setDirection(DcMotorSimple.Direction.FORWARD);
         shoot_d.setDirection(DcMotorSimple.Direction.FORWARD);
@@ -89,6 +96,12 @@ public class CompetitionDrive extends LinearOpMode {
         shoot_u.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         shoot_d.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
+
+        shoot_u.setVelocityPIDFCoefficients(P, I, D, F);
+        shoot_d.setVelocityPIDFCoefficients(P, I, D, F);
+
+
+        //-------------------------------------------------
         // Limelight
         try {
             limelight = hardwareMap.get(Limelight3A.class, "limelight");
@@ -123,6 +136,9 @@ public class CompetitionDrive extends LinearOpMode {
                     if (limelightAlign) updateBotPose(result);
                 }
             }
+            
+            //----------------LIME_LIGHT_END_HERE--------------
+
 
             // X button: reset heading to 90° (Edge trigger)
             if (gamepad1.x && !lastGamepad1X) {
@@ -148,6 +164,7 @@ public class CompetitionDrive extends LinearOpMode {
                 // Update manual offset to current heading for smooth Field Oriented
                 manualAngleOffset = currentPose.getHeading() - Math.toRadians(90);
             }
+            //----------------------
 
             // Execute PD or Manual drive
             if (limelightAlign) {
@@ -163,6 +180,8 @@ public class CompetitionDrive extends LinearOpMode {
 
         if (limelight != null) limelight.stop();
     }
+
+    
 
     private void updateBotPose(LLResult result) {
         Pose3D botPose = result.getBotpose();
