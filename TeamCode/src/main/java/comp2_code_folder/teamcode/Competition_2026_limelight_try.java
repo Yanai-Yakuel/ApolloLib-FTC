@@ -67,7 +67,6 @@ public class CompetitionDrive extends LinearOpMode {
     private boolean lastGamepad1B = false;
     private boolean lastGamepad1X = false;
     private boolean lastGamepad1Y = false;
-    private double manualAngleOffset = 0;
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -102,8 +101,6 @@ public class CompetitionDrive extends LinearOpMode {
 
         waitForStart();
 
-        manualAngleOffset = drive.getPoseEstimate().getHeading() + Math.toRadians(90);
-
         while (opModeIsActive() && !isStopRequested()) {
 
             drive.update();
@@ -115,13 +112,12 @@ public class CompetitionDrive extends LinearOpMode {
 
             // Limelight
             boolean tagVisible = false;
-
-                if (limelight != null) {
-            LLResult result = limelight.getLatestResult();
-            if (result != null && result.isValid()) {
-                tagVisible = true;
+            if (limelight != null) {
+                LLResult result = limelight.getLatestResult();
+                if (result != null && result.isValid()) {
+                    tagVisible = true;
+                }
             }
-        }
 
             // X button: reset heading to 90°
             if (gamepad1.x && !lastGamepad1X) {
@@ -133,15 +129,15 @@ public class CompetitionDrive extends LinearOpMode {
             }
             lastGamepad1X = gamepad1.x;
 
+            // Y button: align רק אם רואים תג
             if (gamepad1.y && !lastGamepad1Y) {
                 if (limelight != null) {
                     LLResult result = limelight.getLatestResult();
                     if (result != null && result.isValid()) {
-                        updateBotPose(result); // עדכן פוזה מהתג
+                        updateBotPose(result);
                         limelightAlign = true;
                         resetIntegrals();
                     }
-                    // אם לא ראה תג - לא עושה כלום
                 }
             }
             lastGamepad1Y = gamepad1.y;
@@ -151,13 +147,12 @@ public class CompetitionDrive extends LinearOpMode {
                     Math.abs(gamepad1.left_stick_x) > 0.15 ||
                     Math.abs(gamepad1.right_stick_x) > 0.15) {
                 limelightAlign = false;
-                manualAngleOffset = currentPose.getHeading() - Math.toRadians(90);
             }
 
             if (limelightAlign) {
                 executePD(currentPose, poseVelocity, TARGET_POSE_RED);
             } else {
-                driveManual(currentPose);
+                driveManual();
             }
 
             handleIntake();
@@ -199,7 +194,6 @@ public class CompetitionDrive extends LinearOpMode {
         if (distance < 0.5 && Math.abs(hErr) < Math.toRadians(2)) {
             drive.setWeightedDrivePower(new Pose2d(0, 0, 0));
             limelightAlign = false;
-            manualAngleOffset = currentPose.getHeading() - Math.toRadians(90);
             xIntegral = 0;
             yIntegral = 0;
             return;
@@ -227,12 +221,12 @@ public class CompetitionDrive extends LinearOpMode {
         drive.setWeightedDrivePower(new Pose2d(rotX, rotY, rotPower));
     }
 
-    private void driveManual(Pose2d pose) {
+    private void driveManual() {
         double inputY = -gamepad1.left_stick_y * DRIVE_POWER;
         double inputX =  gamepad1.left_stick_x * DRIVE_POWER;
         double rx     = -gamepad1.right_stick_x * ROTATION_POWER;
 
-        double botHeading = pose.getHeading() - manualAngleOffset;
+        double botHeading = drive.getRawExternalHeading();
         double rotX = inputX * Math.cos(-botHeading) - inputY * Math.sin(-botHeading);
         double rotY = inputX * Math.sin(-botHeading) + inputY * Math.cos(-botHeading);
 
@@ -303,17 +297,17 @@ public class CompetitionDrive extends LinearOpMode {
                 break;
         }
     }
-
     private void sendTelemetry(Pose2d pose, boolean tagVisible, boolean aligning) {
-        telemetry.addData("Mode",    aligning   ? "ALIGNING" : "MANUAL");
-        telemetry.addData("Source",  tagVisible ? "BOTPOSE"  : "ODOMETRY");
-        telemetry.addData("Target",  "(-26.7, 24.0)");
-        telemetry.addData("Current", "(%.1f, %.1f)", pose.getX(), pose.getY());
+        telemetry.addData("Mode",         aligning   ? "ALIGNING" : "MANUAL");
+        telemetry.addData("Tag Visible",  tagVisible ? "YES"      : "NO");
+        telemetry.addData("Heading IMU",  "%.1f°", Math.toDegrees(drive.getRawExternalHeading()));
+        telemetry.addData("Shooter",      readyToShoot ? "ON" : "OFF");
+        telemetry.addData("Shoot State",  currentShootState.toString());
         if (aligning) {
             telemetry.addData("X Error", "%.1f", TARGET_POSE_RED.getX() - pose.getX());
             telemetry.addData("Y Error", "%.1f", TARGET_POSE_RED.getY() - pose.getY());
+            telemetry.addData("H Error", "%.1f°", Math.toDegrees(Angle.normDelta(TARGET_POSE_RED.getHeading() - pose.getHeading())));
         }
-        telemetry.addData("Heading", "%.1f°", Math.toDegrees(pose.getHeading()));
         telemetry.update();
     }
 }
