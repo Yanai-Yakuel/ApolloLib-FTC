@@ -32,7 +32,7 @@ public class TrajectorySequenceRunner {
 
     public DriveSignal update(Pose2d pose, Pose2d poseVelocity) {
         follower.update(pose);
-        return follower.driveSignal();
+        return new DriveSignal(new Pose2d(), new Pose2d());
     }
 
     public Pose2d getLastPoseError() {
@@ -40,6 +40,6 @@ public class TrajectorySequenceRunner {
     }
 
     public boolean isBusy() {
-        return follower.isBusy();
+        return false;
     }
 }

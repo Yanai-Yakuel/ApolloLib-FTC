@@ -26,6 +26,16 @@ public class TrajectorySequenceBuilder {
         this.baseAccelConstraint = baseAccelConstraint;
     }
 
+    public TrajectorySequenceBuilder turn(double angle) {
+        return this;
+    }
+
+    public TrajectorySequenceBuilder addTrajectory(Trajectory trajectory) {
+        sequenceList.add(trajectory);
+        lastPose = trajectory.end();
+        return this;
+    }
+
     public TrajectorySequenceBuilder lineToLinearHeading(Pose2d endPose) {
         TrajectoryBuilder builder = new TrajectoryBuilder(lastPose, lastTangent, baseVelConstraint, baseAccelConstraint);
         builder.lineToLinearHeading(endPose);
