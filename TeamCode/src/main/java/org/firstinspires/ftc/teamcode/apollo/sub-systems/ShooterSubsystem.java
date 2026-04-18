@@ -26,7 +26,7 @@ public class ShooterSubsystem {
     public static double P = 100, I = 1.2, D = 3, F = 0;
     public static double TARGET_RPM = 2250;
     public static final double TICKS_PER_REV = 28.0;
-    public static final double RPM_TOLERANCE = 190;
+    public static final double RPM_TOLERANCE = 130;
 
     // Servo positions - can be adjusted!
     public static double B_OPEN = 0.556;
@@ -84,10 +84,14 @@ public class ShooterSubsystem {
                 break;
             case OPEN_BLOCK:
                 if (shootTimer.milliseconds() > 300) {
-                    intake.setTransferPower(0.8);
+                    if (shootTimer.milliseconds() < 400) {
+                        intake.setTransferPower(-0.5);
+                    } else {
+                        intake.setTransferPower(0.8);
+                        shootTimer.reset();
+                        currentShootState = ShootState.RUN_TRANSFER;
+                    }
                     intake.setIntakePower(-0.8);
-                    shootTimer.reset();
-                    currentShootState = ShootState.RUN_TRANSFER;
                 }
                 break;
             case RUN_TRANSFER:

@@ -31,10 +31,10 @@ import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import java.util.Arrays;
 import java.util.List;
-import org.firstinspires.ftc.teamcode.apollo.trajectorysequence.TrajectorySequence;
-import org.firstinspires.ftc.teamcode.apollo.trajectorysequence.TrajectorySequenceBuilder;
-import org.firstinspires.ftc.teamcode.apollo.trajectorysequence.TrajectorySequenceRunner;
-import org.firstinspires.ftc.teamcode.apollo.util.LynxModuleUtil;
+import comp3_code_folder.org.firstinspires.ftc.teamcode.trajectorysequence.TrajectorySequence;
+import comp3_code_folder.org.firstinspires.ftc.teamcode.trajectorysequence.TrajectorySequenceBuilder;
+import comp3_code_folder.org.firstinspires.ftc.teamcode.trajectorysequence.TrajectorySequenceRunner;
+import comp3_code_folder.org.firstinspires.ftc.teamcode.util.LynxModuleUtil;
 
 import java.util.ArrayList;
 import java.util.Arrays;

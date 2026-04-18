@@ -1,33 +1,28 @@
 package org.firstinspires.ftc.teamcode.apollo;
 
 import androidx.annotation.NonNull;
+
 import com.acmerobotics.roadrunner.geometry.Pose2d;
 import com.acmerobotics.roadrunner.localization.TwoTrackingWheelLocalizer;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import org.firstinspires.ftc.teamcode.apollo.util.Encoder;
+
+import comp3_code_folder.org.firstinspires.ftc.teamcode.util.Encoder;
 
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * TwoWheelTrackingLocalizer - Localization system based on odometry wheels.
- * These constants can be adjusted based on your robot's calibration!
- */
 public class TwoWheelTrackingLocalizer extends TwoTrackingWheelLocalizer {
-    // ---- Odometry wheel mechanical constants ---- (Editable and important!)
     public static double TICKS_PER_REV = 2000;
-    public static double WHEEL_RADIUS = 0.630; // in
+    public static double WHEEL_RADIUS = 0.630;
     public static double GEAR_RATIO = 1;
 
-    // ---- Wheel positions relative to robot center ----
     public static double PARALLEL_X = 2.086;
     public static double PARALLEL_Y = -1.220;
 
     public static double PERPENDICULAR_X = -0.748;
     public static double PERPENDICULAR_Y = -1.45669;
 
-    // X/Y calibration multipliers
     public static double X_MULTIPLIER = 0.998;
     public static double Y_MULTIPLIER = 1.015;
 
@@ -44,7 +39,6 @@ public class TwoWheelTrackingLocalizer extends TwoTrackingWheelLocalizer {
 
         this.drive = drive;
 
-        // שמות המנועים ב-Configuration (יש להתאים לרובוט שלך!)
         parallelEncoder = new Encoder(hardwareMap.get(DcMotorEx.class, "backleft"));
         perpendicularEncoder = new Encoder(hardwareMap.get(DcMotorEx.class, "backright"));
 
